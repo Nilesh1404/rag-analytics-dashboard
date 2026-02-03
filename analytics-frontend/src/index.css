@@ -1,0 +1,25 @@
+body {
+  margin: 0;
+  font-family: Inter, system-ui, sans-serif;
+  background: #f3f9ff;
+}
+
+button {
+  background: #6bbcff;
+  color: white;
+  border: none;
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #4aa9ff;
+}
+
+input {
+  border: none;
+  outline: none;
+  padding: 12px;
+  width: 100%;
+}
