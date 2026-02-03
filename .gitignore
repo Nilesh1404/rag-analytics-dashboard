@@ -1,0 +1,9 @@
+node_modules
+.env
+*.exe
+
+backend/.env
+analytics-frontend/node_modules
+
+# Go
+*.log
