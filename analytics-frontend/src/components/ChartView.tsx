@@ -52,29 +52,80 @@ const PIE_COLORS = [
 ];
 
 export default function ChartView({ response }: any) {
-  const data = response.data || [];
+  const rawData = response.data || [];
 
-  // Note: keep hooks in top-level scope (even if data is empty) so they are
-  // called in the same order on every render (fixes react-hooks/rules-of-hooks).
+ 
+  const data = useMemo(() => {
+    return rawData.map((item: any) => {
+      const flattened: any = {};
 
-  // try to detect a revenue-like numeric key
+ 
+      for (const [key, value] of Object.entries(item)) {
+        if (
+          typeof value === "object" &&
+          value !== null &&
+          !Array.isArray(value)
+        ) {
+  
+          for (const [nestedKey, nestedValue] of Object.entries(value)) {
+            flattened[nestedKey] = nestedValue;
+          }
+        } else if (Array.isArray(value)) {
+      
+          flattened[key] = Array.isArray(value) ? value.join(", ") : value;
+        } else {
+          flattened[key] = value;
+        }
+      }
+      return flattened;
+    });
+  }, [rawData]);
+
+
   const revenueKey = useMemo(() => {
     const sample = data[0] || {};
     const keys = Object.keys(sample);
+
+
     const found = keys.find((k) =>
-      /revenue|amount|total|value|sales|price/i.test(k),
+      /revenue|amount|total|value|sales|price|profit/i.test(k),
     );
     if (found) return found;
+
+
     const numKey = keys.find((k) => typeof sample[k] === "number");
-    return numKey || keys[0] || "value";
+    if (numKey) return numKey;
+
+  
+    return keys[0] || "value";
+  }, [data]);
+
+
+  const displayKey = useMemo(() => {
+    const sample = data[0] || {};
+    const keys = Object.keys(sample);
+
+
+    const found = keys.find((k) =>
+      /name|product|category|title|label|year|month|date/i.test(k),
+    );
+    if (found) return found;
+
+  
+    const strKey = keys.find((k) => typeof sample[k] === "string");
+    if (strKey) return strKey;
+
+    return keys[0] || "name";
   }, [data]);
 
   const chartData = useMemo(() => {
-    return data.map((d: any) => ({
+    return data.map((d: any, i: number) => ({
       ...d,
       revenue: Number(d[revenueKey] ?? 0),
+      displayName: String(d[displayKey] ?? "Unknown"),
+      color: PIE_COLORS[i % PIE_COLORS.length],
     }));
-  }, [data, revenueKey]);
+  }, [data, revenueKey, displayKey]);
 
   const totals = useMemo(() => {
     const total = chartData.reduce(
@@ -87,7 +138,7 @@ export default function ChartView({ response }: any) {
         curr.revenue > (best.revenue || 0) ? curr : best,
       {} as any,
     );
-    return { total, avg, topProduct: top.productName || top.name || "-" };
+    return { total, avg, topProduct: top.displayName || "-" };
   }, [chartData]);
 
   function exportCSV() {
@@ -112,7 +163,7 @@ export default function ChartView({ response }: any) {
     response.title ||
     (response.chart === "pie" ? "Distribution" : "Revenue by Product");
 
-  // If no data available, render a friendly placeholder (hooks still run above).
+
   if (!chartData.length) {
     return (
       <div className="chart-card">
@@ -171,41 +222,33 @@ export default function ChartView({ response }: any) {
         </div>
       </div>
 
-      <div className="chart-area">
-        <ResponsiveContainer width="100%" height="100%">
-          {response.chart === "pie" ? (
-            <PieChart>
-              <Pie
-                data={chartData}
-                dataKey="revenue"
-                nameKey={response.nameKey || "productName"}
-                outerRadius={100}
-                label
-              >
-                {chartData.map((d: any, i: number) => (
-                  <Cell
-                    key={`cell-${i}`}
-                    fill={PIE_COLORS[i % PIE_COLORS.length]}
-                  />
-                ))}
-              </Pie>
-              <Tooltip content={<CustomTooltip />} />
-              <Legend />
-            </PieChart>
-          ) : (
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 30,
+          padding: "20px",
+        }}
+      >
+        <div>
+          <div
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              marginBottom: "12px",
+              color: "#334155",
+            }}
+          >
+            Revenue by Product (Bar Chart)
+          </div>
+          <ResponsiveContainer width="100%" height={300}>
             <BarChart
               data={chartData}
               margin={{ top: 20, right: 20, left: 0, bottom: 40 }}
             >
-              <defs>
-                <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#60a5fa" stopOpacity={0.9} />
-                  <stop offset="100%" stopColor="#2563eb" stopOpacity={0.8} />
-                </linearGradient>
-              </defs>
               <CartesianGrid strokeDasharray="3 3" stroke="#e6eef9" />
               <XAxis
-                dataKey={response.xKey || "productName"}
+                dataKey={response.xKey || displayKey}
                 angle={-20}
                 textAnchor="end"
                 height={60}
@@ -213,7 +256,10 @@ export default function ChartView({ response }: any) {
               <YAxis tickFormatter={formatCurrency} />
               <Tooltip content={<CustomTooltip />} />
               <Legend />
-              <Bar dataKey="revenue" fill="url(#colorRevenue)">
+              <Bar dataKey="revenue" fill="#60a5fa">
+                {chartData.map((entry: any, index: number) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
                 <LabelList
                   dataKey="revenue"
                   formatter={(v: any) => formatCurrency(v)}
@@ -221,26 +267,50 @@ export default function ChartView({ response }: any) {
                 />
               </Bar>
             </BarChart>
-          )}
-        </ResponsiveContainer>
+          </ResponsiveContainer>
+        </div>
+
+        <div>
+          <div
+            style={{
+              fontSize: "14px",
+              fontWeight: 600,
+              marginBottom: "12px",
+              color: "#334155",
+            }}
+          >
+            Distribution (Pie Chart)
+          </div>
+          <ResponsiveContainer width="100%" height={300}>
+            <PieChart>
+              <Pie
+                data={chartData}
+                dataKey="revenue"
+                nameKey="displayName"
+                outerRadius={80}
+                label
+              >
+                {chartData.map((d: any, i: number) => (
+                  <Cell key={`cell-${i}`} fill={d.color} />
+                ))}
+              </Pie>
+              <Tooltip content={<CustomTooltip />} />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
-      {response.chart === "pie" && (
-        <div className="pie-legend">
-          {chartData.map((d: any, i: number) => (
-            <div key={i} className="pie-legend-item">
-              <div
-                className="color-swatch"
-                style={{ background: PIE_COLORS[i % PIE_COLORS.length] }}
-              />
-              <div style={{ color: "#334155" }}>
-                {d.productName || d.name || `Item ${i + 1}`} —{" "}
-                {formatCurrency(d.revenue)}
-              </div>
+      <div className="pie-legend" style={{ marginTop: "20px" }}>
+        {chartData.map((d: any, i: number) => (
+          <div key={i} className="pie-legend-item">
+            <div className="color-swatch" style={{ background: d.color }} />
+            <div style={{ color: "#334155" }}>
+              {d.displayName} — {formatCurrency(d.revenue)}
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

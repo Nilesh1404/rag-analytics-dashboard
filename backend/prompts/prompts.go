@@ -28,6 +28,8 @@ Revenue and profit analytics are computed by aggregating sales.
 
 Cumulative percentages (70%, 60%) are NOT done in MongoDB.
 They are handled by backend code.
+Dates are real MongoDB date objects.
+Year-based trends must use $year operator.
 `
 const IntentPrompt = `
 You are a classifier.
@@ -54,73 +56,64 @@ Return STRICT JSON inside <json></json> only.
 User Question:
 `
 const PipelinePrompt = `
-You are a MongoDB aggregation translator.
+You are a MongoDB aggregation expert.
 
-Convert English questions into MongoDB aggregation pipelines.
+Convert English analytics questions into MongoDB aggregation pipelines.
 
 STRICT RULES:
 
-- Return JSON ARRAY inside <json></json>
-- Use ONLY double quotes
-- NO explanation
-- NO markdown
-- NO JavaScript
-- NO ISODate
-- DO NOT calculate percentages
-- DO NOT do cumulative logic
-- DO NOT filter by date unless user explicitly provides dates
-- Backend will handle "last year" or "last 3 years"
+- Return ONLY JSON ARRAY inside <json></json>
+- Use double quotes only
+- No explanations
+- No markdown
+- No JavaScript
+- No ISODate
+- Do NOT calculate percentages or cumulative logic
+- Backend handles last N years filtering
 
 Allowed operators:
-"$match","$lookup","$unwind","$group","$sum","$sort","$limit"
+"$match","$lookup","$unwind","$group","$sum","$sort","$limit","$addToSet","$project"
 
-When grouping products:
-Always group by product name.
+Rules:
 
-When matching product name:
-Use "$regex" with "$options":"i"
+- Always $lookup products
+- Always $unwind productInfo
+- When grouping products, group by product name
+- For revenue use "$sum":"$revenue"
+- For profit use "$sum":"$profit"
+- For trends use:
 
-If user asks for:
-- top selling → sort by totalRevenue desc
-- trend → group by year extracted from date string
-- profit → sum profit
-- revenue → sum revenue
+"_id":{"year":{"$year":"$date"}}
 
-Example:
+- For counting products:
+
+"productCount":{"$addToSet":"$productInfo.name"}
+
+Examples:
+
+Revenue trend:
 
 <json>
 [
- {
-  "$lookup":{
-   "from":"products",
-   "localField":"productId",
-   "foreignField":"_id",
-   "as":"productInfo"
-  }
- },
- { "$unwind":"$productInfo" },
- {
-  "$group":{
-   "_id":"$productInfo.name",
-   "productName":{"$first":"$productInfo.name"},
-   "totalRevenue":{"$sum":"$revenue"},
-   "totalProfit":{"$sum":"$profit"}
-  }
- },
- { "$sort":{"totalRevenue":-1} }
+ {"$lookup":{"from":"products","localField":"productId","foreignField":"_id","as":"productInfo"}},
+ {"$unwind":"$productInfo"},
+ {"$group":{"_id":"$productInfo.name","totalRevenue":{"$sum":"$revenue"}}},
+ {"$project":{"_id":0,"productName":"$_id","revenue":"$totalRevenue"}},
+ {"$sort":{"revenue":-1}}
 ]
 </json>
 
 User Question:
 `
+
 const SummaryPrompt = `
 You are a senior analytics architect.
 
 Rules:
 - ONLY use provided Mongo results
 - NEVER invent numbers
-- NEVER change totals
-- NEVER add products
+- If question requires cumulative logic, say backend will handle it.
+- Explain results clearly.
 
 You MUST embed ALL product names and numeric values directly into imagePrompt.
 
